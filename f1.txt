@@ -1,1 +1,1250 @@
-Moshi Moshi
+SOFTWARE ENGINEERING LAB INTERNAL II
+POSSIBLE QUESTIONS, ANSWERS, STEP-BY-STEP PROCESSES AND COMMANDS
+All 8 uploaded ZIP projects | Study guide based on SET-4 through SET-9 Word question papers
+====================================================================================
+SOURCE INSPECTION AND SCOPE
+The Word papers repeatedly test: Docker Compose; Jenkins Scripted Pipeline; Maven build/test/WAR; Docker image build and push; GitHub webhooks and scheduled builds; Kubernetes/Minikube Deployment, NodePort, scaling, troubleshooting and rollback; AWS EC2/SSH/Security Groups; Nagios monitoring.
+All eight ZIPs were inspected. They are Maven WAR web applications built mainly from JSP pages, web.xml and pom.xml. The project-specific WAR names and visible JSP pages are listed below.
+Important archive findings: HMS and E-ticketing include Dockerfile + docker-compose.yml. ORS includes a Dockerfile only. BloodBank, Sport, Apartment, VehicleRental and Gym do not include Dockerfile/Compose. HMS and E-ticketing Compose files refer to ./db/init.sql, but that file is not present in the archive listing.
+The archives do not show Java backend source or SQL schema/init files. Do not claim that database-backed authentication, booking, registration or persistence works just because MySQL starts. The Compose examples below are infrastructure practice templates; JDBC/database integration must be implemented separately.
+JSP/WAR applications need a servlet container such as Tomcat. Nginx alone serves static content and does not execute JSP.
+Use your own GitHub URL, Docker Hub username, Jenkins credential ID, EC2 IP and passwords. Never commit credentials. Commands are Bash/Linux/macOS unless stated.
+
+PART 1 — COMMON EXAM QUESTIONS WITH ANSWERS
+====================================================================================
+Q1. What is Docker Compose?
+Answer: A tool to define and run multiple containers from one YAML file. Use it for an app plus MySQL or Nagios. Start with docker compose up -d.
+
+Q2. What is an image vs a container?
+Answer: An image is a template; a container is a running or stopped instance created from that image.
+
+Q3. Explain port mapping 8080:8080.
+Answer: The left value is the host port; the right value is the container port. Browser access is http://localhost:8080.
+
+Q4. What does depends_on do?
+Answer: It controls service startup order, but basic depends_on does not guarantee database readiness. Use a healthcheck and service_healthy where supported.
+
+Q5. Why use a named volume for MySQL?
+Answer: It persists database files outside the container lifecycle. Removing/recreating a container will not automatically remove the named volume. Back up important data.
+
+Q6. Stop Compose services without deleting them?
+Answer: docker compose stop. It stops containers but preserves them.
+
+Q7. Start the same stopped containers?
+Answer: docker compose start.
+
+Q8. Stop and remove containers and default network?
+Answer: docker compose down. Add -v only if you intentionally want to delete named volumes and stored data.
+
+Q9. Apply a changed Compose file?
+Answer: docker compose up -d --build. Compose reconciles the services and recreates containers when needed.
+
+Q10. Stop only one Compose service?
+Answer: docker compose stop <service-key>. Use the service key from the YAML.
+
+Q11. How do you inspect Compose?
+Answer: docker compose config; docker compose ps; docker compose logs -f; docker compose logs -f <service>.
+
+Q12. What is a Jenkins Scripted Pipeline?
+Answer: A Groovy pipeline using node { } and stage('name') { } blocks to automate checkout, build, test, package, publish and notifications.
+
+Q13. How do you skip Docker stages after Maven failure?
+Answer: Allow sh 'mvn clean test package' to fail without swallowing the exception. Sequential stages after an uncaught failure are not executed. Do not catch and continue.
+
+Q14. How should Docker Hub credentials be stored?
+Answer: Store username and access token/password in Jenkins Credentials. Access by credential ID with withCredentials; never hard-code or echo secrets.
+
+Q15. Why might a GitHub webhook fail?
+Answer: Check Jenkins public reachability, webhook URL, push event, job GitHub hook trigger, repository/branch, firewall/proxy, webhook delivery response and Jenkins logs.
+
+Q16. How do you schedule Jenkins at 6 PM daily?
+Answer: Declarative: triggers { cron('0 18 * * *') }. In Scripted Pipeline, configure the job's Build periodically trigger or use properties([pipelineTriggers([cron('0 18 * * *')])]) where supported.
+
+Q17. How do you email only on Jenkins failure?
+Answer: Wrap stages in try/catch; in catch call emailext(to:..., subject:..., body:...) then rethrow the error. Configure SMTP and Email Extension Plugin first.
+
+Q18. What is a Kubernetes Deployment?
+Answer: A controller that maintains the requested number of Pods and supports rolling updates and rollback.
+
+Q19. What is a NodePort Service?
+Answer: A Service that exposes the application on a node port, normally 30000–32767, and forwards traffic to matching ready Pods.
+
+Q20. Scale to four replicas and verify?
+Answer: kubectl scale deployment/<name> --replicas=4; kubectl get deployment; kubectl get pods.
+
+Q21. Why does Service ENDPOINTS show none?
+Answer: Service selector may not match Pod labels, Pods may not be Ready, or resources may be in different namespaces. Compare kubectl get svc -o yaml and kubectl get pods --show-labels.
+
+Q22. Troubleshoot Pending/CrashLoopBackOff Pods?
+Answer: kubectl get pods -o wide; kubectl describe pod <pod>; kubectl logs <pod> --previous; kubectl get events --sort-by=.metadata.creationTimestamp. Check image, pull secret, resources, scheduling, config and app logs.
+
+Q23. Rollback a Deployment?
+Answer: kubectl rollout history deployment/<name>; kubectl rollout undo deployment/<name>; kubectl rollout status deployment/<name>.
+
+Q24. Delete Deployment and Service?
+Answer: kubectl delete deployment <name>; kubectl delete service <name>; verify with kubectl get deployments,svc,pods.
+
+Q25. SSH to EC2 fails: what to check?
+Answer: Instance state, public IP, correct username (Ubuntu commonly ubuntu), correct key, chmod 400 key.pem, TCP 22 inbound from your IP, public subnet route/Internet Gateway, NACL and OS firewall.
+
+Q26. EC2 app works locally but not from browser?
+Answer: Ensure app binds to 0.0.0.0, correct container port mapping, Security Group and OS firewall allow the host port, public IPv4 and route are correct.
+
+Q27. How do you persist EC2 data?
+Answer: Use EBS and configure attachment/mount/retention. For containers mount an EBS-backed directory or Docker volume. Configure DeleteOnTermination deliberately and back up.
+
+Q28. Allow HTTP but restrict SSH?
+Answer: Security Group inbound TCP 80 from intended users (0.0.0.0/0 only for public website; add IPv6 if needed); TCP 22 only from administrator public IP/CIDR.
+
+Q29. What is Nagios?
+Answer: A host/service monitoring system. It reports states such as OK, WARNING, CRITICAL and UNKNOWN; use its dashboard and logs to diagnose checks.
+
+PART 2 — PROJECT-BY-PROJECT PRACTICAL QUESTIONS AND SOLUTIONS
+====================================================================================
+
+HMS — Hospital Management System
+------------------------------------------------------------------------------------
+Archive: HMS-main.zip
+Maven output: target/hms.war
+Visible JSP pages: index.jsp (hospital homepage), register.jsp (doctor appointment form)
+Archive-specific note: Dockerfile and Compose exist; Compose references ./db/init.sql, which is absent from archive.
+
+Q1. How do you build the project and generate its WAR?
+Answer/process:
+  unzip HMS-main.zip
+  cd HMS-main
+  mvn clean
+  mvn test
+  mvn package
+  ls -lh target/hms.war
+Expected: BUILD SUCCESS and target/hms.war exists. The POM uses WAR packaging; finalName determines the WAR filename.
+
+Q2. How do you containerize and run the application using Tomcat?
+Create Dockerfile in the project root:
+  FROM tomcat:9.0
+  COPY target/hms.war /usr/local/tomcat/webapps/ROOT.war
+  CMD ["catalina.sh", "run"]
+Commands:
+  mvn clean package
+  docker build -t <dockerhub-user>/hms:v1 .
+  docker run -d --name hms-tomcat -p 8000:8080 <dockerhub-user>/hms:v1
+  docker ps
+  docker logs -f hms-tomcat
+Browser: http://localhost:8000/
+
+Q3. Write Docker Compose for the web application and MySQL.
+Answer: create docker-compose.yml. This is a generic exam template; the supplied JSP project does not currently show JDBC integration.
+  services:
+    web:
+      build: .
+      container_name: hms-tomcat
+      ports: ["8000:8080"]
+      depends_on:
+        db:
+          condition: service_healthy
+    db:
+      image: mysql:8.0
+      container_name: hms-db
+      environment:
+        MYSQL_DATABASE: appdb
+        MYSQL_USER: appuser
+        MYSQL_PASSWORD: change_me
+        MYSQL_ROOT_PASSWORD: change_root_me
+      ports: ["3307:3306"]
+      volumes: ["app_db_data:/var/lib/mysql"]
+      healthcheck:
+        test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+        interval: 10s
+        timeout: 5s
+        retries: 10
+  volumes:
+    app_db_data:
+Commands: docker compose config; docker compose up -d --build; docker compose ps; docker compose logs -f; docker compose stop; docker compose start; docker compose down.
+Warning: docker compose down -v deletes named volumes and database data. To really use MySQL from JSP, add JDBC driver, connection code, schema and matching DB environment/config.
+
+Q4. Create a Jenkins Scripted Pipeline to build/test/package and publish a Docker image.
+Example Jenkinsfile (replace repository URL, branch, Docker Hub username and team email):
+  node {
+    def image = '<dockerhub-user>/hms:${BUILD_NUMBER}'
+    try {
+      stage('Checkout') {
+        checkout([$class: 'GitSCM', branches: [[name: '*/main']],
+          userRemoteConfigs: [[url: '<YOUR_GITHUB_REPOSITORY_URL>']]])
+      }
+      stage('Build and Test') {
+        sh 'mvn clean test package'
+        archiveArtifacts artifacts: 'target/*.war', fingerprint: true
+      }
+      stage('Docker Build') { sh "docker build -t ${image} ." }
+      stage('Docker Push') {
+        withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
+          usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+          sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
+          sh "docker push ${image}"
+          sh 'docker logout'
+        }
+      }
+    } catch (err) {
+      emailext(to: '<team-email>', subject: "FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+        body: "Build failed. See ${env.BUILD_URL}console for details.")
+      throw err
+    }
+  }
+Jenkins setup: install Git, Pipeline and Email Extension plugins; configure JDK/Maven; add Docker Hub username/token as Jenkins credential ID dockerhub-creds; create Pipeline from SCM; set repo/branch; enable GitHub hook trigger; add webhook http(s)://<jenkins-host>/github-webhook/ for push events; run once and inspect Console Output.
+Agent requirements: Maven, Docker CLI and Docker daemon access. Configure SMTP for emailext. Use your real default branch (main/master).
+
+Q5. Deploy to Minikube, scale to four Pods and expose using NodePort.
+Commands:
+  minikube start
+  minikube status
+  kubectl create deployment hms --image=<dockerhub-user>/hms:v1
+  kubectl scale deployment/hms --replicas=4
+  kubectl expose deployment hms --type=NodePort --port=8080 --target-port=8080
+  kubectl get nodes
+  kubectl get deployments
+  kubectl get pods -o wide
+  kubectl get services
+  minikube service hms --url
+Open the returned URL. Ensure the image exists in Docker Hub (or load it into Minikube) and targetPort matches the app's actual listening port.
+Troubleshooting: kubectl describe deployment hms; kubectl describe pod <pod>; kubectl logs <pod> --previous; kubectl get events --sort-by=.metadata.creationTimestamp; kubectl get svc hms -o yaml; kubectl get pods --show-labels.
+Rollback: kubectl rollout history deployment/hms; kubectl rollout undo deployment/hms; kubectl rollout status deployment/hms.
+Cleanup: kubectl delete service hms; kubectl delete deployment hms; minikube stop.
+
+Q6. Deploy on AWS EC2 and make it accessible publicly.
+Process: launch Ubuntu EC2 with key pair and public IPv4 in a public subnet; Security Group inbound TCP 22 from YOUR_IP/32 and TCP 8000 from the required client range; SSH; install Docker/Maven/Git; clone/copy project; mvn clean package; build and run container.
+Commands:
+  chmod 400 <key.pem>
+  ssh -i <key.pem> ubuntu@<EC2_PUBLIC_IP>
+  # after installing Docker and Maven, inside project directory:
+  mvn clean package
+  docker build -t hms:v1 .
+  docker run -d --name hms-tomcat -p 8000:8080 hms:v1
+  docker ps
+  docker logs hms-tomcat
+  curl -I http://localhost:8000/
+Browser from your PC: http://<EC2_PUBLIC_IP>:8000/
+Cleanup: docker stop hms-tomcat; docker rm hms-tomcat; terminate EC2 only when the lab is complete. Review EBS volumes/Elastic IPs separately.
+If the question asks for static index.html with Nginx, use nginx:alpine and map 80:80. Nginx does not run JSP; use Tomcat for this WAR.
+
+Q7. Monitor the application using Nagios.
+Process: choose a Nagios Docker image; read that image's documentation for web port, default credentials and config paths; run it with a persistent config volume; attach Nagios and app containers to a shared Docker network; configure an HTTP service check against the app's container DNS name and internal port; reload Nagios; inspect Hosts/Services dashboard.
+Troubleshoot CRITICAL: confirm app container is running; test app URL from inside monitoring network; check DNS/network attachment, service port/path, Nagios check plugin/command, config syntax and logs.
+Example network commands: docker network create monitoring-net; docker network connect monitoring-net hms-tomcat; docker network connect monitoring-net <nagios-container>.
+Nagios is not supplied in these archives; exact image and configuration are image-specific.
+
+
+E-TICKETING — Online E-Ticketing System
+------------------------------------------------------------------------------------
+Archive: E-ticketing-main.zip
+Maven output: target/ots.war
+Visible JSP pages: index.jsp (ticketing homepage), register.jsp (ticket booking form)
+Archive-specific note: Dockerfile and Compose exist; Compose references ./db/init.sql, which is absent from archive.
+
+Q1. How do you build the project and generate its WAR?
+Answer/process:
+  unzip E-ticketing-main.zip
+  cd E-ticketing-main
+  mvn clean
+  mvn test
+  mvn package
+  ls -lh target/ots.war
+Expected: BUILD SUCCESS and target/ots.war exists. The POM uses WAR packaging; finalName determines the WAR filename.
+
+Q2. How do you containerize and run the application using Tomcat?
+Create Dockerfile in the project root:
+  FROM tomcat:9.0
+  COPY target/ots.war /usr/local/tomcat/webapps/ROOT.war
+  CMD ["catalina.sh", "run"]
+Commands:
+  mvn clean package
+  docker build -t <dockerhub-user>/e-ticketing:v1 .
+  docker run -d --name e-ticketing-tomcat -p 8001:8080 <dockerhub-user>/e-ticketing:v1
+  docker ps
+  docker logs -f e-ticketing-tomcat
+Browser: http://localhost:8001/
+
+Q3. Write Docker Compose for the web application and MySQL.
+Answer: create docker-compose.yml. This is a generic exam template; the supplied JSP project does not currently show JDBC integration.
+  services:
+    web:
+      build: .
+      container_name: e-ticketing-tomcat
+      ports: ["8001:8080"]
+      depends_on:
+        db:
+          condition: service_healthy
+    db:
+      image: mysql:8.0
+      container_name: e-ticketing-db
+      environment:
+        MYSQL_DATABASE: appdb
+        MYSQL_USER: appuser
+        MYSQL_PASSWORD: change_me
+        MYSQL_ROOT_PASSWORD: change_root_me
+      ports: ["3307:3306"]
+      volumes: ["app_db_data:/var/lib/mysql"]
+      healthcheck:
+        test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+        interval: 10s
+        timeout: 5s
+        retries: 10
+  volumes:
+    app_db_data:
+Commands: docker compose config; docker compose up -d --build; docker compose ps; docker compose logs -f; docker compose stop; docker compose start; docker compose down.
+Warning: docker compose down -v deletes named volumes and database data. To really use MySQL from JSP, add JDBC driver, connection code, schema and matching DB environment/config.
+
+Q4. Create a Jenkins Scripted Pipeline to build/test/package and publish a Docker image.
+Example Jenkinsfile (replace repository URL, branch, Docker Hub username and team email):
+  node {
+    def image = '<dockerhub-user>/e-ticketing:${BUILD_NUMBER}'
+    try {
+      stage('Checkout') {
+        checkout([$class: 'GitSCM', branches: [[name: '*/main']],
+          userRemoteConfigs: [[url: '<YOUR_GITHUB_REPOSITORY_URL>']]])
+      }
+      stage('Build and Test') {
+        sh 'mvn clean test package'
+        archiveArtifacts artifacts: 'target/*.war', fingerprint: true
+      }
+      stage('Docker Build') { sh "docker build -t ${image} ." }
+      stage('Docker Push') {
+        withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
+          usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+          sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
+          sh "docker push ${image}"
+          sh 'docker logout'
+        }
+      }
+    } catch (err) {
+      emailext(to: '<team-email>', subject: "FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+        body: "Build failed. See ${env.BUILD_URL}console for details.")
+      throw err
+    }
+  }
+Jenkins setup: install Git, Pipeline and Email Extension plugins; configure JDK/Maven; add Docker Hub username/token as Jenkins credential ID dockerhub-creds; create Pipeline from SCM; set repo/branch; enable GitHub hook trigger; add webhook http(s)://<jenkins-host>/github-webhook/ for push events; run once and inspect Console Output.
+Agent requirements: Maven, Docker CLI and Docker daemon access. Configure SMTP for emailext. Use your real default branch (main/master).
+
+Q5. Deploy to Minikube, scale to four Pods and expose using NodePort.
+Commands:
+  minikube start
+  minikube status
+  kubectl create deployment e-ticketing --image=<dockerhub-user>/e-ticketing:v1
+  kubectl scale deployment/e-ticketing --replicas=4
+  kubectl expose deployment e-ticketing --type=NodePort --port=8080 --target-port=8080
+  kubectl get nodes
+  kubectl get deployments
+  kubectl get pods -o wide
+  kubectl get services
+  minikube service e-ticketing --url
+Open the returned URL. Ensure the image exists in Docker Hub (or load it into Minikube) and targetPort matches the app's actual listening port.
+Troubleshooting: kubectl describe deployment e-ticketing; kubectl describe pod <pod>; kubectl logs <pod> --previous; kubectl get events --sort-by=.metadata.creationTimestamp; kubectl get svc e-ticketing -o yaml; kubectl get pods --show-labels.
+Rollback: kubectl rollout history deployment/e-ticketing; kubectl rollout undo deployment/e-ticketing; kubectl rollout status deployment/e-ticketing.
+Cleanup: kubectl delete service e-ticketing; kubectl delete deployment e-ticketing; minikube stop.
+
+Q6. Deploy on AWS EC2 and make it accessible publicly.
+Process: launch Ubuntu EC2 with key pair and public IPv4 in a public subnet; Security Group inbound TCP 22 from YOUR_IP/32 and TCP 8001 from the required client range; SSH; install Docker/Maven/Git; clone/copy project; mvn clean package; build and run container.
+Commands:
+  chmod 400 <key.pem>
+  ssh -i <key.pem> ubuntu@<EC2_PUBLIC_IP>
+  # after installing Docker and Maven, inside project directory:
+  mvn clean package
+  docker build -t e-ticketing:v1 .
+  docker run -d --name e-ticketing-tomcat -p 8001:8080 e-ticketing:v1
+  docker ps
+  docker logs e-ticketing-tomcat
+  curl -I http://localhost:8001/
+Browser from your PC: http://<EC2_PUBLIC_IP>:8001/
+Cleanup: docker stop e-ticketing-tomcat; docker rm e-ticketing-tomcat; terminate EC2 only when the lab is complete. Review EBS volumes/Elastic IPs separately.
+If the question asks for static index.html with Nginx, use nginx:alpine and map 80:80. Nginx does not run JSP; use Tomcat for this WAR.
+
+Q7. Monitor the application using Nagios.
+Process: choose a Nagios Docker image; read that image's documentation for web port, default credentials and config paths; run it with a persistent config volume; attach Nagios and app containers to a shared Docker network; configure an HTTP service check against the app's container DNS name and internal port; reload Nagios; inspect Hosts/Services dashboard.
+Troubleshoot CRITICAL: confirm app container is running; test app URL from inside monitoring network; check DNS/network attachment, service port/path, Nagios check plugin/command, config syntax and logs.
+Example network commands: docker network create monitoring-net; docker network connect monitoring-net e-ticketing-tomcat; docker network connect monitoring-net <nagios-container>.
+Nagios is not supplied in these archives; exact image and configuration are image-specific.
+
+
+ORS — Online Recruitment System
+------------------------------------------------------------------------------------
+Archive: ORS-main.zip
+Maven output: target/ORS.war
+Visible JSP pages: index.jsp (recruitment homepage), apply.jsp (job application form)
+Archive-specific note: Dockerfile exists; Compose file is absent.
+
+Q1. How do you build the project and generate its WAR?
+Answer/process:
+  unzip ORS-main.zip
+  cd ORS-main
+  mvn clean
+  mvn test
+  mvn package
+  ls -lh target/ORS.war
+Expected: BUILD SUCCESS and target/ORS.war exists. The POM uses WAR packaging; finalName determines the WAR filename.
+
+Q2. How do you containerize and run the application using Tomcat?
+Create Dockerfile in the project root:
+  FROM tomcat:9.0
+  COPY target/ORS.war /usr/local/tomcat/webapps/ROOT.war
+  CMD ["catalina.sh", "run"]
+Commands:
+  mvn clean package
+  docker build -t <dockerhub-user>/ors:v1 .
+  docker run -d --name ors-tomcat -p 8082:8080 <dockerhub-user>/ors:v1
+  docker ps
+  docker logs -f ors-tomcat
+Browser: http://localhost:8082/
+
+Q3. Write Docker Compose for the web application and MySQL.
+Answer: create docker-compose.yml. This is a generic exam template; the supplied JSP project does not currently show JDBC integration.
+  services:
+    web:
+      build: .
+      container_name: ors-tomcat
+      ports: ["8082:8080"]
+      depends_on:
+        db:
+          condition: service_healthy
+    db:
+      image: mysql:8.0
+      container_name: ors-db
+      environment:
+        MYSQL_DATABASE: appdb
+        MYSQL_USER: appuser
+        MYSQL_PASSWORD: change_me
+        MYSQL_ROOT_PASSWORD: change_root_me
+      ports: ["3307:3306"]
+      volumes: ["app_db_data:/var/lib/mysql"]
+      healthcheck:
+        test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+        interval: 10s
+        timeout: 5s
+        retries: 10
+  volumes:
+    app_db_data:
+Commands: docker compose config; docker compose up -d --build; docker compose ps; docker compose logs -f; docker compose stop; docker compose start; docker compose down.
+Warning: docker compose down -v deletes named volumes and database data. To really use MySQL from JSP, add JDBC driver, connection code, schema and matching DB environment/config.
+
+Q4. Create a Jenkins Scripted Pipeline to build/test/package and publish a Docker image.
+Example Jenkinsfile (replace repository URL, branch, Docker Hub username and team email):
+  node {
+    def image = '<dockerhub-user>/ors:${BUILD_NUMBER}'
+    try {
+      stage('Checkout') {
+        checkout([$class: 'GitSCM', branches: [[name: '*/main']],
+          userRemoteConfigs: [[url: '<YOUR_GITHUB_REPOSITORY_URL>']]])
+      }
+      stage('Build and Test') {
+        sh 'mvn clean test package'
+        archiveArtifacts artifacts: 'target/*.war', fingerprint: true
+      }
+      stage('Docker Build') { sh "docker build -t ${image} ." }
+      stage('Docker Push') {
+        withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
+          usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+          sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
+          sh "docker push ${image}"
+          sh 'docker logout'
+        }
+      }
+    } catch (err) {
+      emailext(to: '<team-email>', subject: "FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+        body: "Build failed. See ${env.BUILD_URL}console for details.")
+      throw err
+    }
+  }
+Jenkins setup: install Git, Pipeline and Email Extension plugins; configure JDK/Maven; add Docker Hub username/token as Jenkins credential ID dockerhub-creds; create Pipeline from SCM; set repo/branch; enable GitHub hook trigger; add webhook http(s)://<jenkins-host>/github-webhook/ for push events; run once and inspect Console Output.
+Agent requirements: Maven, Docker CLI and Docker daemon access. Configure SMTP for emailext. Use your real default branch (main/master).
+
+Q5. Deploy to Minikube, scale to four Pods and expose using NodePort.
+Commands:
+  minikube start
+  minikube status
+  kubectl create deployment ors --image=<dockerhub-user>/ors:v1
+  kubectl scale deployment/ors --replicas=4
+  kubectl expose deployment ors --type=NodePort --port=8080 --target-port=8080
+  kubectl get nodes
+  kubectl get deployments
+  kubectl get pods -o wide
+  kubectl get services
+  minikube service ors --url
+Open the returned URL. Ensure the image exists in Docker Hub (or load it into Minikube) and targetPort matches the app's actual listening port.
+Troubleshooting: kubectl describe deployment ors; kubectl describe pod <pod>; kubectl logs <pod> --previous; kubectl get events --sort-by=.metadata.creationTimestamp; kubectl get svc ors -o yaml; kubectl get pods --show-labels.
+Rollback: kubectl rollout history deployment/ors; kubectl rollout undo deployment/ors; kubectl rollout status deployment/ors.
+Cleanup: kubectl delete service ors; kubectl delete deployment ors; minikube stop.
+
+Q6. Deploy on AWS EC2 and make it accessible publicly.
+Process: launch Ubuntu EC2 with key pair and public IPv4 in a public subnet; Security Group inbound TCP 22 from YOUR_IP/32 and TCP 8082 from the required client range; SSH; install Docker/Maven/Git; clone/copy project; mvn clean package; build and run container.
+Commands:
+  chmod 400 <key.pem>
+  ssh -i <key.pem> ubuntu@<EC2_PUBLIC_IP>
+  # after installing Docker and Maven, inside project directory:
+  mvn clean package
+  docker build -t ors:v1 .
+  docker run -d --name ors-tomcat -p 8082:8080 ors:v1
+  docker ps
+  docker logs ors-tomcat
+  curl -I http://localhost:8082/
+Browser from your PC: http://<EC2_PUBLIC_IP>:8082/
+Cleanup: docker stop ors-tomcat; docker rm ors-tomcat; terminate EC2 only when the lab is complete. Review EBS volumes/Elastic IPs separately.
+If the question asks for static index.html with Nginx, use nginx:alpine and map 80:80. Nginx does not run JSP; use Tomcat for this WAR.
+
+Q7. Monitor the application using Nagios.
+Process: choose a Nagios Docker image; read that image's documentation for web port, default credentials and config paths; run it with a persistent config volume; attach Nagios and app containers to a shared Docker network; configure an HTTP service check against the app's container DNS name and internal port; reload Nagios; inspect Hosts/Services dashboard.
+Troubleshoot CRITICAL: confirm app container is running; test app URL from inside monitoring network; check DNS/network attachment, service port/path, Nagios check plugin/command, config syntax and logs.
+Example network commands: docker network create monitoring-net; docker network connect monitoring-net ors-tomcat; docker network connect monitoring-net <nagios-container>.
+Nagios is not supplied in these archives; exact image and configuration are image-specific.
+
+
+BLOODBANK — Blood Bank Management System
+------------------------------------------------------------------------------------
+Archive: BloodBanksystem-main.zip
+Maven output: target/bloodbank.war
+Visible JSP pages: index.jsp (blood bank homepage), inventory.jsp (blood inventory page)
+Archive-specific note: Dockerfile and Compose are absent.
+
+Q1. How do you build the project and generate its WAR?
+Answer/process:
+  unzip BloodBanksystem-main.zip
+  cd BloodBank-main
+  mvn clean
+  mvn test
+  mvn package
+  ls -lh target/bloodbank.war
+Expected: BUILD SUCCESS and target/bloodbank.war exists. The POM uses WAR packaging; finalName determines the WAR filename.
+
+Q2. How do you containerize and run the application using Tomcat?
+Create Dockerfile in the project root:
+  FROM tomcat:9.0
+  COPY target/bloodbank.war /usr/local/tomcat/webapps/ROOT.war
+  CMD ["catalina.sh", "run"]
+Commands:
+  mvn clean package
+  docker build -t <dockerhub-user>/bloodbank:v1 .
+  docker run -d --name bloodbank-tomcat -p 8083:8080 <dockerhub-user>/bloodbank:v1
+  docker ps
+  docker logs -f bloodbank-tomcat
+Browser: http://localhost:8083/
+
+Q3. Write Docker Compose for the web application and MySQL.
+Answer: create docker-compose.yml. This is a generic exam template; the supplied JSP project does not currently show JDBC integration.
+  services:
+    web:
+      build: .
+      container_name: bloodbank-tomcat
+      ports: ["8083:8080"]
+      depends_on:
+        db:
+          condition: service_healthy
+    db:
+      image: mysql:8.0
+      container_name: bloodbank-db
+      environment:
+        MYSQL_DATABASE: appdb
+        MYSQL_USER: appuser
+        MYSQL_PASSWORD: change_me
+        MYSQL_ROOT_PASSWORD: change_root_me
+      ports: ["3307:3306"]
+      volumes: ["app_db_data:/var/lib/mysql"]
+      healthcheck:
+        test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+        interval: 10s
+        timeout: 5s
+        retries: 10
+  volumes:
+    app_db_data:
+Commands: docker compose config; docker compose up -d --build; docker compose ps; docker compose logs -f; docker compose stop; docker compose start; docker compose down.
+Warning: docker compose down -v deletes named volumes and database data. To really use MySQL from JSP, add JDBC driver, connection code, schema and matching DB environment/config.
+
+Q4. Create a Jenkins Scripted Pipeline to build/test/package and publish a Docker image.
+Example Jenkinsfile (replace repository URL, branch, Docker Hub username and team email):
+  node {
+    def image = '<dockerhub-user>/bloodbank:${BUILD_NUMBER}'
+    try {
+      stage('Checkout') {
+        checkout([$class: 'GitSCM', branches: [[name: '*/main']],
+          userRemoteConfigs: [[url: '<YOUR_GITHUB_REPOSITORY_URL>']]])
+      }
+      stage('Build and Test') {
+        sh 'mvn clean test package'
+        archiveArtifacts artifacts: 'target/*.war', fingerprint: true
+      }
+      stage('Docker Build') { sh "docker build -t ${image} ." }
+      stage('Docker Push') {
+        withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
+          usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+          sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
+          sh "docker push ${image}"
+          sh 'docker logout'
+        }
+      }
+    } catch (err) {
+      emailext(to: '<team-email>', subject: "FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+        body: "Build failed. See ${env.BUILD_URL}console for details.")
+      throw err
+    }
+  }
+Jenkins setup: install Git, Pipeline and Email Extension plugins; configure JDK/Maven; add Docker Hub username/token as Jenkins credential ID dockerhub-creds; create Pipeline from SCM; set repo/branch; enable GitHub hook trigger; add webhook http(s)://<jenkins-host>/github-webhook/ for push events; run once and inspect Console Output.
+Agent requirements: Maven, Docker CLI and Docker daemon access. Configure SMTP for emailext. Use your real default branch (main/master).
+
+Q5. Deploy to Minikube, scale to four Pods and expose using NodePort.
+Commands:
+  minikube start
+  minikube status
+  kubectl create deployment bloodbank --image=<dockerhub-user>/bloodbank:v1
+  kubectl scale deployment/bloodbank --replicas=4
+  kubectl expose deployment bloodbank --type=NodePort --port=8080 --target-port=8080
+  kubectl get nodes
+  kubectl get deployments
+  kubectl get pods -o wide
+  kubectl get services
+  minikube service bloodbank --url
+Open the returned URL. Ensure the image exists in Docker Hub (or load it into Minikube) and targetPort matches the app's actual listening port.
+Troubleshooting: kubectl describe deployment bloodbank; kubectl describe pod <pod>; kubectl logs <pod> --previous; kubectl get events --sort-by=.metadata.creationTimestamp; kubectl get svc bloodbank -o yaml; kubectl get pods --show-labels.
+Rollback: kubectl rollout history deployment/bloodbank; kubectl rollout undo deployment/bloodbank; kubectl rollout status deployment/bloodbank.
+Cleanup: kubectl delete service bloodbank; kubectl delete deployment bloodbank; minikube stop.
+
+Q6. Deploy on AWS EC2 and make it accessible publicly.
+Process: launch Ubuntu EC2 with key pair and public IPv4 in a public subnet; Security Group inbound TCP 22 from YOUR_IP/32 and TCP 8083 from the required client range; SSH; install Docker/Maven/Git; clone/copy project; mvn clean package; build and run container.
+Commands:
+  chmod 400 <key.pem>
+  ssh -i <key.pem> ubuntu@<EC2_PUBLIC_IP>
+  # after installing Docker and Maven, inside project directory:
+  mvn clean package
+  docker build -t bloodbank:v1 .
+  docker run -d --name bloodbank-tomcat -p 8083:8080 bloodbank:v1
+  docker ps
+  docker logs bloodbank-tomcat
+  curl -I http://localhost:8083/
+Browser from your PC: http://<EC2_PUBLIC_IP>:8083/
+Cleanup: docker stop bloodbank-tomcat; docker rm bloodbank-tomcat; terminate EC2 only when the lab is complete. Review EBS volumes/Elastic IPs separately.
+If the question asks for static index.html with Nginx, use nginx:alpine and map 80:80. Nginx does not run JSP; use Tomcat for this WAR.
+
+Q7. Monitor the application using Nagios.
+Process: choose a Nagios Docker image; read that image's documentation for web port, default credentials and config paths; run it with a persistent config volume; attach Nagios and app containers to a shared Docker network; configure an HTTP service check against the app's container DNS name and internal port; reload Nagios; inspect Hosts/Services dashboard.
+Troubleshoot CRITICAL: confirm app container is running; test app URL from inside monitoring network; check DNS/network attachment, service port/path, Nagios check plugin/command, config syntax and logs.
+Example network commands: docker network create monitoring-net; docker network connect monitoring-net bloodbank-tomcat; docker network connect monitoring-net <nagios-container>.
+Nagios is not supplied in these archives; exact image and configuration are image-specific.
+
+
+SPORT — Sports Management System
+------------------------------------------------------------------------------------
+Archive: SportSystem-main.zip
+Maven output: target/sportssystem.war
+Visible JSP pages: index.jsp (sports homepage/player registration/tournament dashboard), schedule.jsp (match schedule)
+Archive-specific note: Dockerfile and Compose are absent.
+
+Q1. How do you build the project and generate its WAR?
+Answer/process:
+  unzip SportSystem-main.zip
+  cd Sport-main
+  mvn clean
+  mvn test
+  mvn package
+  ls -lh target/sportssystem.war
+Expected: BUILD SUCCESS and target/sportssystem.war exists. The POM uses WAR packaging; finalName determines the WAR filename.
+
+Q2. How do you containerize and run the application using Tomcat?
+Create Dockerfile in the project root:
+  FROM tomcat:9.0
+  COPY target/sportssystem.war /usr/local/tomcat/webapps/ROOT.war
+  CMD ["catalina.sh", "run"]
+Commands:
+  mvn clean package
+  docker build -t <dockerhub-user>/sport:v1 .
+  docker run -d --name sport-tomcat -p 8084:8080 <dockerhub-user>/sport:v1
+  docker ps
+  docker logs -f sport-tomcat
+Browser: http://localhost:8084/
+
+Q3. Write Docker Compose for the web application and MySQL.
+Answer: create docker-compose.yml. This is a generic exam template; the supplied JSP project does not currently show JDBC integration.
+  services:
+    web:
+      build: .
+      container_name: sport-tomcat
+      ports: ["8084:8080"]
+      depends_on:
+        db:
+          condition: service_healthy
+    db:
+      image: mysql:8.0
+      container_name: sport-db
+      environment:
+        MYSQL_DATABASE: appdb
+        MYSQL_USER: appuser
+        MYSQL_PASSWORD: change_me
+        MYSQL_ROOT_PASSWORD: change_root_me
+      ports: ["3307:3306"]
+      volumes: ["app_db_data:/var/lib/mysql"]
+      healthcheck:
+        test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+        interval: 10s
+        timeout: 5s
+        retries: 10
+  volumes:
+    app_db_data:
+Commands: docker compose config; docker compose up -d --build; docker compose ps; docker compose logs -f; docker compose stop; docker compose start; docker compose down.
+Warning: docker compose down -v deletes named volumes and database data. To really use MySQL from JSP, add JDBC driver, connection code, schema and matching DB environment/config.
+
+Q4. Create a Jenkins Scripted Pipeline to build/test/package and publish a Docker image.
+Example Jenkinsfile (replace repository URL, branch, Docker Hub username and team email):
+  node {
+    def image = '<dockerhub-user>/sport:${BUILD_NUMBER}'
+    try {
+      stage('Checkout') {
+        checkout([$class: 'GitSCM', branches: [[name: '*/main']],
+          userRemoteConfigs: [[url: '<YOUR_GITHUB_REPOSITORY_URL>']]])
+      }
+      stage('Build and Test') {
+        sh 'mvn clean test package'
+        archiveArtifacts artifacts: 'target/*.war', fingerprint: true
+      }
+      stage('Docker Build') { sh "docker build -t ${image} ." }
+      stage('Docker Push') {
+        withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
+          usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+          sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
+          sh "docker push ${image}"
+          sh 'docker logout'
+        }
+      }
+    } catch (err) {
+      emailext(to: '<team-email>', subject: "FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+        body: "Build failed. See ${env.BUILD_URL}console for details.")
+      throw err
+    }
+  }
+Jenkins setup: install Git, Pipeline and Email Extension plugins; configure JDK/Maven; add Docker Hub username/token as Jenkins credential ID dockerhub-creds; create Pipeline from SCM; set repo/branch; enable GitHub hook trigger; add webhook http(s)://<jenkins-host>/github-webhook/ for push events; run once and inspect Console Output.
+Agent requirements: Maven, Docker CLI and Docker daemon access. Configure SMTP for emailext. Use your real default branch (main/master).
+
+Q5. Deploy to Minikube, scale to four Pods and expose using NodePort.
+Commands:
+  minikube start
+  minikube status
+  kubectl create deployment sport --image=<dockerhub-user>/sport:v1
+  kubectl scale deployment/sport --replicas=4
+  kubectl expose deployment sport --type=NodePort --port=8080 --target-port=8080
+  kubectl get nodes
+  kubectl get deployments
+  kubectl get pods -o wide
+  kubectl get services
+  minikube service sport --url
+Open the returned URL. Ensure the image exists in Docker Hub (or load it into Minikube) and targetPort matches the app's actual listening port.
+Troubleshooting: kubectl describe deployment sport; kubectl describe pod <pod>; kubectl logs <pod> --previous; kubectl get events --sort-by=.metadata.creationTimestamp; kubectl get svc sport -o yaml; kubectl get pods --show-labels.
+Rollback: kubectl rollout history deployment/sport; kubectl rollout undo deployment/sport; kubectl rollout status deployment/sport.
+Cleanup: kubectl delete service sport; kubectl delete deployment sport; minikube stop.
+
+Q6. Deploy on AWS EC2 and make it accessible publicly.
+Process: launch Ubuntu EC2 with key pair and public IPv4 in a public subnet; Security Group inbound TCP 22 from YOUR_IP/32 and TCP 8084 from the required client range; SSH; install Docker/Maven/Git; clone/copy project; mvn clean package; build and run container.
+Commands:
+  chmod 400 <key.pem>
+  ssh -i <key.pem> ubuntu@<EC2_PUBLIC_IP>
+  # after installing Docker and Maven, inside project directory:
+  mvn clean package
+  docker build -t sport:v1 .
+  docker run -d --name sport-tomcat -p 8084:8080 sport:v1
+  docker ps
+  docker logs sport-tomcat
+  curl -I http://localhost:8084/
+Browser from your PC: http://<EC2_PUBLIC_IP>:8084/
+Cleanup: docker stop sport-tomcat; docker rm sport-tomcat; terminate EC2 only when the lab is complete. Review EBS volumes/Elastic IPs separately.
+If the question asks for static index.html with Nginx, use nginx:alpine and map 80:80. Nginx does not run JSP; use Tomcat for this WAR.
+
+Q7. Monitor the application using Nagios.
+Process: choose a Nagios Docker image; read that image's documentation for web port, default credentials and config paths; run it with a persistent config volume; attach Nagios and app containers to a shared Docker network; configure an HTTP service check against the app's container DNS name and internal port; reload Nagios; inspect Hosts/Services dashboard.
+Troubleshoot CRITICAL: confirm app container is running; test app URL from inside monitoring network; check DNS/network attachment, service port/path, Nagios check plugin/command, config syntax and logs.
+Example network commands: docker network create monitoring-net; docker network connect monitoring-net sport-tomcat; docker network connect monitoring-net <nagios-container>.
+Nagios is not supplied in these archives; exact image and configuration are image-specific.
+
+
+APARTMENT — Apartment Maintenance System
+------------------------------------------------------------------------------------
+Archive: ApartmentSystem-main.zip
+Maven output: target/apartmentsystem.war
+Visible JSP pages: index.jsp (apartment maintenance homepage), complaints.jsp (maintenance complaint form)
+Archive-specific note: Dockerfile and Compose are absent.
+
+Q1. How do you build the project and generate its WAR?
+Answer/process:
+  unzip ApartmentSystem-main.zip
+  cd Apartment-main
+  mvn clean
+  mvn test
+  mvn package
+  ls -lh target/apartmentsystem.war
+Expected: BUILD SUCCESS and target/apartmentsystem.war exists. The POM uses WAR packaging; finalName determines the WAR filename.
+
+Q2. How do you containerize and run the application using Tomcat?
+Create Dockerfile in the project root:
+  FROM tomcat:9.0
+  COPY target/apartmentsystem.war /usr/local/tomcat/webapps/ROOT.war
+  CMD ["catalina.sh", "run"]
+Commands:
+  mvn clean package
+  docker build -t <dockerhub-user>/apartment:v1 .
+  docker run -d --name apartment-tomcat -p 8085:8080 <dockerhub-user>/apartment:v1
+  docker ps
+  docker logs -f apartment-tomcat
+Browser: http://localhost:8085/
+
+Q3. Write Docker Compose for the web application and MySQL.
+Answer: create docker-compose.yml. This is a generic exam template; the supplied JSP project does not currently show JDBC integration.
+  services:
+    web:
+      build: .
+      container_name: apartment-tomcat
+      ports: ["8085:8080"]
+      depends_on:
+        db:
+          condition: service_healthy
+    db:
+      image: mysql:8.0
+      container_name: apartment-db
+      environment:
+        MYSQL_DATABASE: appdb
+        MYSQL_USER: appuser
+        MYSQL_PASSWORD: change_me
+        MYSQL_ROOT_PASSWORD: change_root_me
+      ports: ["3307:3306"]
+      volumes: ["app_db_data:/var/lib/mysql"]
+      healthcheck:
+        test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+        interval: 10s
+        timeout: 5s
+        retries: 10
+  volumes:
+    app_db_data:
+Commands: docker compose config; docker compose up -d --build; docker compose ps; docker compose logs -f; docker compose stop; docker compose start; docker compose down.
+Warning: docker compose down -v deletes named volumes and database data. To really use MySQL from JSP, add JDBC driver, connection code, schema and matching DB environment/config.
+
+Q4. Create a Jenkins Scripted Pipeline to build/test/package and publish a Docker image.
+Example Jenkinsfile (replace repository URL, branch, Docker Hub username and team email):
+  node {
+    def image = '<dockerhub-user>/apartment:${BUILD_NUMBER}'
+    try {
+      stage('Checkout') {
+        checkout([$class: 'GitSCM', branches: [[name: '*/main']],
+          userRemoteConfigs: [[url: '<YOUR_GITHUB_REPOSITORY_URL>']]])
+      }
+      stage('Build and Test') {
+        sh 'mvn clean test package'
+        archiveArtifacts artifacts: 'target/*.war', fingerprint: true
+      }
+      stage('Docker Build') { sh "docker build -t ${image} ." }
+      stage('Docker Push') {
+        withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
+          usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+          sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
+          sh "docker push ${image}"
+          sh 'docker logout'
+        }
+      }
+    } catch (err) {
+      emailext(to: '<team-email>', subject: "FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+        body: "Build failed. See ${env.BUILD_URL}console for details.")
+      throw err
+    }
+  }
+Jenkins setup: install Git, Pipeline and Email Extension plugins; configure JDK/Maven; add Docker Hub username/token as Jenkins credential ID dockerhub-creds; create Pipeline from SCM; set repo/branch; enable GitHub hook trigger; add webhook http(s)://<jenkins-host>/github-webhook/ for push events; run once and inspect Console Output.
+Agent requirements: Maven, Docker CLI and Docker daemon access. Configure SMTP for emailext. Use your real default branch (main/master).
+
+Q5. Deploy to Minikube, scale to four Pods and expose using NodePort.
+Commands:
+  minikube start
+  minikube status
+  kubectl create deployment apartment --image=<dockerhub-user>/apartment:v1
+  kubectl scale deployment/apartment --replicas=4
+  kubectl expose deployment apartment --type=NodePort --port=8080 --target-port=8080
+  kubectl get nodes
+  kubectl get deployments
+  kubectl get pods -o wide
+  kubectl get services
+  minikube service apartment --url
+Open the returned URL. Ensure the image exists in Docker Hub (or load it into Minikube) and targetPort matches the app's actual listening port.
+Troubleshooting: kubectl describe deployment apartment; kubectl describe pod <pod>; kubectl logs <pod> --previous; kubectl get events --sort-by=.metadata.creationTimestamp; kubectl get svc apartment -o yaml; kubectl get pods --show-labels.
+Rollback: kubectl rollout history deployment/apartment; kubectl rollout undo deployment/apartment; kubectl rollout status deployment/apartment.
+Cleanup: kubectl delete service apartment; kubectl delete deployment apartment; minikube stop.
+
+Q6. Deploy on AWS EC2 and make it accessible publicly.
+Process: launch Ubuntu EC2 with key pair and public IPv4 in a public subnet; Security Group inbound TCP 22 from YOUR_IP/32 and TCP 8085 from the required client range; SSH; install Docker/Maven/Git; clone/copy project; mvn clean package; build and run container.
+Commands:
+  chmod 400 <key.pem>
+  ssh -i <key.pem> ubuntu@<EC2_PUBLIC_IP>
+  # after installing Docker and Maven, inside project directory:
+  mvn clean package
+  docker build -t apartment:v1 .
+  docker run -d --name apartment-tomcat -p 8085:8080 apartment:v1
+  docker ps
+  docker logs apartment-tomcat
+  curl -I http://localhost:8085/
+Browser from your PC: http://<EC2_PUBLIC_IP>:8085/
+Cleanup: docker stop apartment-tomcat; docker rm apartment-tomcat; terminate EC2 only when the lab is complete. Review EBS volumes/Elastic IPs separately.
+If the question asks for static index.html with Nginx, use nginx:alpine and map 80:80. Nginx does not run JSP; use Tomcat for this WAR.
+
+Q7. Monitor the application using Nagios.
+Process: choose a Nagios Docker image; read that image's documentation for web port, default credentials and config paths; run it with a persistent config volume; attach Nagios and app containers to a shared Docker network; configure an HTTP service check against the app's container DNS name and internal port; reload Nagios; inspect Hosts/Services dashboard.
+Troubleshoot CRITICAL: confirm app container is running; test app URL from inside monitoring network; check DNS/network attachment, service port/path, Nagios check plugin/command, config syntax and logs.
+Example network commands: docker network create monitoring-net; docker network connect monitoring-net apartment-tomcat; docker network connect monitoring-net <nagios-container>.
+Nagios is not supplied in these archives; exact image and configuration are image-specific.
+
+
+VEHICLERENTAL — Vehicle Rental Management System
+------------------------------------------------------------------------------------
+Archive: VehicleRentalManagementSystem-main.zip
+Maven output: target/VehicleRentalManagement.war
+Visible JSP pages: index.jsp, login.jsp, register.jsp, vehicle.jsp (vehicle information/rates)
+Archive-specific note: Dockerfile and Compose are absent.
+
+Q1. How do you build the project and generate its WAR?
+Answer/process:
+  unzip VehicleRentalManagementSystem-main.zip
+  cd VehicleRental-main
+  mvn clean
+  mvn test
+  mvn package
+  ls -lh target/VehicleRentalManagement.war
+Expected: BUILD SUCCESS and target/VehicleRentalManagement.war exists. The POM uses WAR packaging; finalName determines the WAR filename.
+
+Q2. How do you containerize and run the application using Tomcat?
+Create Dockerfile in the project root:
+  FROM tomcat:9.0
+  COPY target/VehicleRentalManagement.war /usr/local/tomcat/webapps/ROOT.war
+  CMD ["catalina.sh", "run"]
+Commands:
+  mvn clean package
+  docker build -t <dockerhub-user>/vehiclerental:v1 .
+  docker run -d --name vehiclerental-tomcat -p 8086:8080 <dockerhub-user>/vehiclerental:v1
+  docker ps
+  docker logs -f vehiclerental-tomcat
+Browser: http://localhost:8086/
+
+Q3. Write Docker Compose for the web application and MySQL.
+Answer: create docker-compose.yml. This is a generic exam template; the supplied JSP project does not currently show JDBC integration.
+  services:
+    web:
+      build: .
+      container_name: vehiclerental-tomcat
+      ports: ["8086:8080"]
+      depends_on:
+        db:
+          condition: service_healthy
+    db:
+      image: mysql:8.0
+      container_name: vehiclerental-db
+      environment:
+        MYSQL_DATABASE: appdb
+        MYSQL_USER: appuser
+        MYSQL_PASSWORD: change_me
+        MYSQL_ROOT_PASSWORD: change_root_me
+      ports: ["3307:3306"]
+      volumes: ["app_db_data:/var/lib/mysql"]
+      healthcheck:
+        test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+        interval: 10s
+        timeout: 5s
+        retries: 10
+  volumes:
+    app_db_data:
+Commands: docker compose config; docker compose up -d --build; docker compose ps; docker compose logs -f; docker compose stop; docker compose start; docker compose down.
+Warning: docker compose down -v deletes named volumes and database data. To really use MySQL from JSP, add JDBC driver, connection code, schema and matching DB environment/config.
+
+Q4. Create a Jenkins Scripted Pipeline to build/test/package and publish a Docker image.
+Example Jenkinsfile (replace repository URL, branch, Docker Hub username and team email):
+  node {
+    def image = '<dockerhub-user>/vehiclerental:${BUILD_NUMBER}'
+    try {
+      stage('Checkout') {
+        checkout([$class: 'GitSCM', branches: [[name: '*/main']],
+          userRemoteConfigs: [[url: '<YOUR_GITHUB_REPOSITORY_URL>']]])
+      }
+      stage('Build and Test') {
+        sh 'mvn clean test package'
+        archiveArtifacts artifacts: 'target/*.war', fingerprint: true
+      }
+      stage('Docker Build') { sh "docker build -t ${image} ." }
+      stage('Docker Push') {
+        withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
+          usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+          sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
+          sh "docker push ${image}"
+          sh 'docker logout'
+        }
+      }
+    } catch (err) {
+      emailext(to: '<team-email>', subject: "FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+        body: "Build failed. See ${env.BUILD_URL}console for details.")
+      throw err
+    }
+  }
+Jenkins setup: install Git, Pipeline and Email Extension plugins; configure JDK/Maven; add Docker Hub username/token as Jenkins credential ID dockerhub-creds; create Pipeline from SCM; set repo/branch; enable GitHub hook trigger; add webhook http(s)://<jenkins-host>/github-webhook/ for push events; run once and inspect Console Output.
+Agent requirements: Maven, Docker CLI and Docker daemon access. Configure SMTP for emailext. Use your real default branch (main/master).
+
+Q5. Deploy to Minikube, scale to four Pods and expose using NodePort.
+Commands:
+  minikube start
+  minikube status
+  kubectl create deployment vehiclerental --image=<dockerhub-user>/vehiclerental:v1
+  kubectl scale deployment/vehiclerental --replicas=4
+  kubectl expose deployment vehiclerental --type=NodePort --port=8080 --target-port=8080
+  kubectl get nodes
+  kubectl get deployments
+  kubectl get pods -o wide
+  kubectl get services
+  minikube service vehiclerental --url
+Open the returned URL. Ensure the image exists in Docker Hub (or load it into Minikube) and targetPort matches the app's actual listening port.
+Troubleshooting: kubectl describe deployment vehiclerental; kubectl describe pod <pod>; kubectl logs <pod> --previous; kubectl get events --sort-by=.metadata.creationTimestamp; kubectl get svc vehiclerental -o yaml; kubectl get pods --show-labels.
+Rollback: kubectl rollout history deployment/vehiclerental; kubectl rollout undo deployment/vehiclerental; kubectl rollout status deployment/vehiclerental.
+Cleanup: kubectl delete service vehiclerental; kubectl delete deployment vehiclerental; minikube stop.
+
+Q6. Deploy on AWS EC2 and make it accessible publicly.
+Process: launch Ubuntu EC2 with key pair and public IPv4 in a public subnet; Security Group inbound TCP 22 from YOUR_IP/32 and TCP 8086 from the required client range; SSH; install Docker/Maven/Git; clone/copy project; mvn clean package; build and run container.
+Commands:
+  chmod 400 <key.pem>
+  ssh -i <key.pem> ubuntu@<EC2_PUBLIC_IP>
+  # after installing Docker and Maven, inside project directory:
+  mvn clean package
+  docker build -t vehiclerental:v1 .
+  docker run -d --name vehiclerental-tomcat -p 8086:8080 vehiclerental:v1
+  docker ps
+  docker logs vehiclerental-tomcat
+  curl -I http://localhost:8086/
+Browser from your PC: http://<EC2_PUBLIC_IP>:8086/
+Cleanup: docker stop vehiclerental-tomcat; docker rm vehiclerental-tomcat; terminate EC2 only when the lab is complete. Review EBS volumes/Elastic IPs separately.
+If the question asks for static index.html with Nginx, use nginx:alpine and map 80:80. Nginx does not run JSP; use Tomcat for this WAR.
+
+Q7. Monitor the application using Nagios.
+Process: choose a Nagios Docker image; read that image's documentation for web port, default credentials and config paths; run it with a persistent config volume; attach Nagios and app containers to a shared Docker network; configure an HTTP service check against the app's container DNS name and internal port; reload Nagios; inspect Hosts/Services dashboard.
+Troubleshoot CRITICAL: confirm app container is running; test app URL from inside monitoring network; check DNS/network attachment, service port/path, Nagios check plugin/command, config syntax and logs.
+Example network commands: docker network create monitoring-net; docker network connect monitoring-net vehiclerental-tomcat; docker network connect monitoring-net <nagios-container>.
+Nagios is not supplied in these archives; exact image and configuration are image-specific.
+
+
+GYM — Gym Membership Management System
+------------------------------------------------------------------------------------
+Archive: GymManagementSystem-main.zip
+Maven output: target/GymManagementSystem.war
+Visible JSP pages: index.jsp, login.jsp, register.jsp, membership.jsp (membership plans)
+Archive-specific note: Dockerfile and Compose are absent.
+
+Q1. How do you build the project and generate its WAR?
+Answer/process:
+  unzip GymManagementSystem-main.zip
+  cd Gym-main
+  mvn clean
+  mvn test
+  mvn package
+  ls -lh target/GymManagementSystem.war
+Expected: BUILD SUCCESS and target/GymManagementSystem.war exists. The POM uses WAR packaging; finalName determines the WAR filename.
+
+Q2. How do you containerize and run the application using Tomcat?
+Create Dockerfile in the project root:
+  FROM tomcat:9.0
+  COPY target/GymManagementSystem.war /usr/local/tomcat/webapps/ROOT.war
+  CMD ["catalina.sh", "run"]
+Commands:
+  mvn clean package
+  docker build -t <dockerhub-user>/gym:v1 .
+  docker run -d --name gym-tomcat -p 8087:8080 <dockerhub-user>/gym:v1
+  docker ps
+  docker logs -f gym-tomcat
+Browser: http://localhost:8087/
+
+Q3. Write Docker Compose for the web application and MySQL.
+Answer: create docker-compose.yml. This is a generic exam template; the supplied JSP project does not currently show JDBC integration.
+  services:
+    web:
+      build: .
+      container_name: gym-tomcat
+      ports: ["8087:8080"]
+      depends_on:
+        db:
+          condition: service_healthy
+    db:
+      image: mysql:8.0
+      container_name: gym-db
+      environment:
+        MYSQL_DATABASE: appdb
+        MYSQL_USER: appuser
+        MYSQL_PASSWORD: change_me
+        MYSQL_ROOT_PASSWORD: change_root_me
+      ports: ["3307:3306"]
+      volumes: ["app_db_data:/var/lib/mysql"]
+      healthcheck:
+        test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+        interval: 10s
+        timeout: 5s
+        retries: 10
+  volumes:
+    app_db_data:
+Commands: docker compose config; docker compose up -d --build; docker compose ps; docker compose logs -f; docker compose stop; docker compose start; docker compose down.
+Warning: docker compose down -v deletes named volumes and database data. To really use MySQL from JSP, add JDBC driver, connection code, schema and matching DB environment/config.
+
+Q4. Create a Jenkins Scripted Pipeline to build/test/package and publish a Docker image.
+Example Jenkinsfile (replace repository URL, branch, Docker Hub username and team email):
+  node {
+    def image = '<dockerhub-user>/gym:${BUILD_NUMBER}'
+    try {
+      stage('Checkout') {
+        checkout([$class: 'GitSCM', branches: [[name: '*/main']],
+          userRemoteConfigs: [[url: '<YOUR_GITHUB_REPOSITORY_URL>']]])
+      }
+      stage('Build and Test') {
+        sh 'mvn clean test package'
+        archiveArtifacts artifacts: 'target/*.war', fingerprint: true
+      }
+      stage('Docker Build') { sh "docker build -t ${image} ." }
+      stage('Docker Push') {
+        withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
+          usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+          sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
+          sh "docker push ${image}"
+          sh 'docker logout'
+        }
+      }
+    } catch (err) {
+      emailext(to: '<team-email>', subject: "FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+        body: "Build failed. See ${env.BUILD_URL}console for details.")
+      throw err
+    }
+  }
+Jenkins setup: install Git, Pipeline and Email Extension plugins; configure JDK/Maven; add Docker Hub username/token as Jenkins credential ID dockerhub-creds; create Pipeline from SCM; set repo/branch; enable GitHub hook trigger; add webhook http(s)://<jenkins-host>/github-webhook/ for push events; run once and inspect Console Output.
+Agent requirements: Maven, Docker CLI and Docker daemon access. Configure SMTP for emailext. Use your real default branch (main/master).
+
+Q5. Deploy to Minikube, scale to four Pods and expose using NodePort.
+Commands:
+  minikube start
+  minikube status
+  kubectl create deployment gym --image=<dockerhub-user>/gym:v1
+  kubectl scale deployment/gym --replicas=4
+  kubectl expose deployment gym --type=NodePort --port=8080 --target-port=8080
+  kubectl get nodes
+  kubectl get deployments
+  kubectl get pods -o wide
+  kubectl get services
+  minikube service gym --url
+Open the returned URL. Ensure the image exists in Docker Hub (or load it into Minikube) and targetPort matches the app's actual listening port.
+Troubleshooting: kubectl describe deployment gym; kubectl describe pod <pod>; kubectl logs <pod> --previous; kubectl get events --sort-by=.metadata.creationTimestamp; kubectl get svc gym -o yaml; kubectl get pods --show-labels.
+Rollback: kubectl rollout history deployment/gym; kubectl rollout undo deployment/gym; kubectl rollout status deployment/gym.
+Cleanup: kubectl delete service gym; kubectl delete deployment gym; minikube stop.
+
+Q6. Deploy on AWS EC2 and make it accessible publicly.
+Process: launch Ubuntu EC2 with key pair and public IPv4 in a public subnet; Security Group inbound TCP 22 from YOUR_IP/32 and TCP 8087 from the required client range; SSH; install Docker/Maven/Git; clone/copy project; mvn clean package; build and run container.
+Commands:
+  chmod 400 <key.pem>
+  ssh -i <key.pem> ubuntu@<EC2_PUBLIC_IP>
+  # after installing Docker and Maven, inside project directory:
+  mvn clean package
+  docker build -t gym:v1 .
+  docker run -d --name gym-tomcat -p 8087:8080 gym:v1
+  docker ps
+  docker logs gym-tomcat
+  curl -I http://localhost:8087/
+Browser from your PC: http://<EC2_PUBLIC_IP>:8087/
+Cleanup: docker stop gym-tomcat; docker rm gym-tomcat; terminate EC2 only when the lab is complete. Review EBS volumes/Elastic IPs separately.
+If the question asks for static index.html with Nginx, use nginx:alpine and map 80:80. Nginx does not run JSP; use Tomcat for this WAR.
+
+Q7. Monitor the application using Nagios.
+Process: choose a Nagios Docker image; read that image's documentation for web port, default credentials and config paths; run it with a persistent config volume; attach Nagios and app containers to a shared Docker network; configure an HTTP service check against the app's container DNS name and internal port; reload Nagios; inspect Hosts/Services dashboard.
+Troubleshoot CRITICAL: confirm app container is running; test app URL from inside monitoring network; check DNS/network attachment, service port/path, Nagios check plugin/command, config syntax and logs.
+Example network commands: docker network create monitoring-net; docker network connect monitoring-net gym-tomcat; docker network connect monitoring-net <nagios-container>.
+Nagios is not supplied in these archives; exact image and configuration are image-specific.
+
+PART 3 — EXTRA SCENARIO QUESTIONS LIKELY FROM THE PAPERS
+====================================================================================
+Extra Q1. How do you map host port 9090 to Tomcat 8080?
+Answer: docker run -d -p 9090:8080 <image>; Compose: ports: ['9090:8080']; browse http://localhost:9090/.
+
+Extra Q2. How do you rebuild after changing JSP or WAR?
+Answer: mvn clean package && docker build --no-cache -t <user>/<app>:v2 .; run a new container or update the Kubernetes image.
+
+Extra Q3. How do you push an image manually?
+Answer: docker login; docker tag <local-image> <user>/<repo>:tag; docker push <user>/<repo>:tag. Use an access token.
+
+Extra Q4. What if the host port is already allocated?
+Answer: Choose another host port such as 8090:8080; inspect docker ps and OS processes. The right-side container port must still match Tomcat.
+
+Extra Q5. What if Docker build says target/*.war not found?
+Answer: Run mvn clean package from the folder containing pom.xml; check target/<finalName>.war; run docker build from project root.
+
+Extra Q6. What if Maven says no POM?
+Answer: pwd; ls; cd into the extracted project root that contains pom.xml; rerun Maven.
+
+Extra Q7. What if a Kubernetes image pull fails?
+Answer: kubectl describe pod <pod>; inspect ErrImagePull/ImagePullBackOff; verify image/tag, registry visibility, credentials and imagePullSecrets.
+
+Extra Q8. How do you inspect a crashing Pod's previous logs?
+Answer: kubectl logs <pod> --previous; kubectl describe pod <pod>; kubectl get events --sort-by=.metadata.creationTimestamp.
+
+Extra Q9. What is port-forward vs NodePort?
+Answer: port-forward is a temporary local debug tunnel; NodePort exposes a Service through a node port.
+
+Extra Q10. How do you configure rolling update and rollback?
+Answer: kubectl set image deployment/<name> <container>=<image>:v2; kubectl rollout status deployment/<name>; kubectl rollout undo deployment/<name>.
+
+Extra Q11. How do you find why Jenkins failed?
+Answer: Open the build in Jenkins, inspect Pipeline/Stage View, click the failed stage, read Console Output and stack trace; verify agent tools and credentials.
+
+Extra Q12. How do you verify GitHub webhook delivery?
+Answer: GitHub repository Settings > Webhooks > select webhook > Recent Deliveries; inspect HTTP response and redeliver after fixing.
+
+Extra Q13. How do you create a static Nginx website on EC2?
+Answer: Create index.html; docker run -d --name static-site -p 80:80 -v "$PWD":/usr/share/nginx/html:ro nginx:alpine; allow TCP 80; browse http://<public-ip>.
+
+Extra Q14. How do you inspect EC2 public IP with AWS CLI?
+Answer: aws ec2 describe-instances --instance-ids <id> --query 'Reservations[].Instances[].[State.Name,PublicIpAddress]' --output table (requires AWS CLI credentials/permissions).
+
+Extra Q15. Stop vs terminate EC2?
+Answer: Stop powers off an EBS-backed instance while retaining it and its EBS volumes; terminate deletes the instance and may delete volumes according to DeleteOnTermination.
+
+Extra Q16. What does EBS provide?
+Answer: Persistent block storage for EC2. Attach/mount carefully and use snapshots/backups.
+
+Extra Q17. How to send both success and failure emails?
+Answer: Use try/catch/finally or post-build result handling; send success email only when currentBuild.currentResult == 'SUCCESS', and failure email otherwise. SMTP and Email Extension Plugin must be configured.
+
+Extra Q18. What should you do if a Service has no endpoints?
+Answer: Compare selector labels to Pod labels; verify Pods are Ready and in same namespace; kubectl get endpoints <service>; kubectl get pods --show-labels; kubectl describe service <service>.
+
+Extra Q19. How do you remove Compose containers but preserve DB data?
+Answer: docker compose down (do not add -v). Named volumes remain.
+
+Extra Q20. How do you remove Compose containers and DB data?
+Answer: docker compose down -v. This is destructive; only do it when data can be discarded.
+
+PART 4 — PRACTICAL EXAM CHECKLIST
+====================================================================================
+1. Locate the extracted project folder and confirm pom.xml is present.
+2. Run mvn clean test package; verify the exact WAR under target/.
+3. Create Dockerfile copying the exact WAR into Tomcat 9 webapps/ROOT.war.
+4. Build image, run container with host:container port mapping, inspect docker ps and logs.
+5. If asked, create Compose YAML; validate with docker compose config; start with docker compose up -d --build.
+6. Open the app in browser. Remember JSP needs Tomcat, not plain Nginx.
+7. Configure Jenkins tools/credentials, write Scripted Pipeline, run once and inspect Console Output.
+8. Configure webhook or cron only when requested; verify delivery or schedule.
+9. Push Docker image and verify tag in Docker Hub.
+10. Start Minikube; deploy image; scale to requested replicas; expose NodePort; verify Pods/Service/browser URL.
+11. Troubleshoot with describe, logs, events, labels and selectors before recreating resources.
+12. Launch EC2 with least-privilege Security Group; SSH; deploy; test localhost first, then public IP.
+13. Clean up lab containers/resources; preserve volumes unless explicitly told to delete data.
+
+PART 5 — QUICK COMMAND CHEAT SHEET
+====================================================================================
+Maven: mvn clean | mvn test | mvn package | mvn clean test package
+Git: git clone <repo-url> | git status | git pull
+Docker: docker build -t <user>/<app>:v1 . | docker run -d --name <name> -p <host>:8080 <image> | docker ps | docker logs -f <name> | docker stop <name> | docker rm <name>
+Docker Hub: docker login | docker tag <image> <user>/<repo>:tag | docker push <user>/<repo>:tag
+Compose: docker compose config | docker compose up -d --build | docker compose ps | docker compose logs -f | docker compose stop | docker compose start | docker compose down
+Minikube: minikube start | minikube status | minikube service <service> --url | minikube stop
+kubectl: kubectl get nodes | kubectl get deploy,pods,svc | kubectl scale deployment/<name> --replicas=4 | kubectl describe pod <pod> | kubectl logs <pod> --previous | kubectl get events --sort-by=.metadata.creationTimestamp | kubectl rollout undo deployment/<name> | kubectl delete svc <name> | kubectl delete deployment <name>
+EC2 SSH: chmod 400 <key.pem> | ssh -i <key.pem> ubuntu@<public-ip>
+EC2 Docker: docker ps | docker logs <container> | curl -I http://localhost:<port>/
+
+FINAL EXAM TIPS
+- Give the command, explain its purpose, then give a verification command.
+- Compose stop/start preserves containers; down removes containers/network; down -v also deletes named volumes.
+- Kubernetes Deployment manages Pods; Service provides stable networking. ENDPOINTS none usually means selector/labels/readiness issue.
+- Jenkins must stop later publish stages after Maven failure. Keep credentials in Jenkins Credentials.
+- EC2 public IP is not enough: verify route, Security Group, OS firewall, bind address and Docker port mapping.
+- The archives are primarily JSP WAR samples. Do not claim real DB persistence or business logic absent from the source.
+
+END OF FILE
